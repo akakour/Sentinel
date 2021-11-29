@@ -114,8 +114,20 @@ public class CtSph implements Sph {
         return asyncEntryWithPriorityInternal(resourceWrapper, count, false, args);
     }
 
+    /**
+     * k可带优先级的操作资源
+     * @param resourceWrapper 资源的包装类
+     * @param count 资源计数 默认1
+     * @param prioritized 是否优先级，默认false
+     * @param args
+     * @return
+     * @throws BlockException
+     */
     private Entry entryWithPriority(ResourceWrapper resourceWrapper, int count, boolean prioritized, Object... args)
         throws BlockException {
+        /**
+         * 1. 从TL中 获取上下文，没有定义默认是：sentinel_default_context。并与TL绑定
+         */
         Context context = ContextUtil.getContext();
         if (context instanceof NullContext) {
             // The {@link NullContext} indicates that the amount of context has exceeded the threshold,
@@ -123,6 +135,7 @@ public class CtSph implements Sph {
             return new CtEntry(resourceWrapper, null, context);
         }
 
+        // 没有定义上下文，默认创建sentinel_default_context
         if (context == null) {
             // Using default context.
             context = InternalContextUtil.internalEnter(Constants.CONTEXT_DEFAULT_NAME);
@@ -133,6 +146,16 @@ public class CtSph implements Sph {
             return new CtEntry(resourceWrapper, null, context);
         }
 
+        /**
+         * 2. 重点 获取操作solt链
+         * （1）。SPI机制获取ProcessorSlot接口实现
+         * （2）。根据实现类的 @Spi(isSingleton = false, order = Constants.ORDER_CLUSTER_BUILDER_SLOT) 的order属性进行排序，数据越小，优先度越高
+         * （3）。按照官方资料 processSlot按照以下顺序排列
+         *      NodeSelectorSlot --> ClusterBuilderSlot --> StatisticSlot --
+         *                                                                  |_>
+         * DegradeSlot <-- FlowSlot <-- AuthoritySlot <-- SystemSlot < -- ParamDlowSlot
+         *  (4)，其中 FlowSlot就是限流节点，DegreadeSlot就是降级节点，ParamFlowSlot就是热点数据节点
+         */
         ProcessorSlot<Object> chain = lookProcessChain(resourceWrapper);
 
         /*

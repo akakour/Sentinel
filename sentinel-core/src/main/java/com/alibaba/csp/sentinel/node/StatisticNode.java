@@ -90,6 +90,10 @@ import com.alibaba.csp.sentinel.util.function.Predicate;
 public class StatisticNode implements Node {
 
     /**
+     * 按 INTERVAL 长度的时间窗，SAMPLE_COUNT 个样本窗来统计数据
+     * 1. INTERVAL 默认1000ms
+     * 2. SAMPLE_COUNT 默认2
+     *
      * Holds statistics of the recent {@code INTERVAL} seconds. The {@code INTERVAL} is divided into time spans
      * by given {@code sampleCount}.
      */
@@ -242,9 +246,15 @@ public class StatisticNode implements Node {
         return (int)curThreadNum.sum();
     }
 
+    /**
+     *  滑动时间窗算法 统计通过数据
+     * @param count count to add pass
+     */
     @Override
     public void addPassRequest(int count) {
+        // 秒 滑动窗口添加通过数
         rollingCounterInSecond.addPass(count);
+        // 分 时间窗口添加通过数
         rollingCounterInMinute.addPass(count);
     }
 

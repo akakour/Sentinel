@@ -28,6 +28,8 @@ import com.alibaba.csp.sentinel.slots.statistic.metric.occupy.OccupiableBucketLe
 import com.alibaba.csp.sentinel.util.function.Predicate;
 
 /**
+ * 以数组形式存储的 时间窗计量器
+ *
  * The basic metric class in Sentinel using a {@link BucketLeapArray} internal.
  *
  * @author jialiang.linjl
@@ -35,6 +37,9 @@ import com.alibaba.csp.sentinel.util.function.Predicate;
  */
 public class ArrayMetric implements Metric {
 
+    /**
+     * 重点  计数器
+     */
     private final LeapArray<MetricBucket> data;
 
     public ArrayMetric(int sampleCount, int intervalInMs) {
@@ -239,9 +244,18 @@ public class ArrayMetric implements Metric {
         wrap.value().addSuccess(count);
     }
 
+    /**
+     * 单前样本窗口 +1
+     * @param count
+     */
     @Override
     public void addPass(int count) {
+
+        /**
+         * 拿到当前样本窗
+         */
         WindowWrap<MetricBucket> wrap = data.currentWindow();
+        // 在当前样本窗口中，添加请求通过数
         wrap.value().addPass(count);
     }
 

@@ -84,6 +84,7 @@ public class DefaultNode extends StatisticNode {
         }
         if (!childList.contains(node)) {
             synchronized (this) {
+                // DCL
                 if (!childList.contains(node)) {
                     Set<Node> newSet = new HashSet<>(childList.size() + 1);
                     newSet.addAll(childList);
@@ -136,6 +137,10 @@ public class DefaultNode extends StatisticNode {
         this.clusterNode.decreaseThreadNum();
     }
 
+    /**
+     * 按QPS统计数据
+     * @param count
+     */
     @Override
     public void addPassRequest(int count) {
         super.addPassRequest(count);

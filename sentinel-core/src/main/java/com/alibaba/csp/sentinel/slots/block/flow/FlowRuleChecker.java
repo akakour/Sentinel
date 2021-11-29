@@ -41,15 +41,28 @@ import com.alibaba.csp.sentinel.util.function.Function;
  */
 public class FlowRuleChecker {
 
+    /**
+     * 流控 检查
+     * @param ruleProvider
+     * @param resource
+     * @param context
+     * @param node
+     * @param count
+     * @param prioritized
+     * @throws BlockException
+     */
     public void checkFlow(Function<String, Collection<FlowRule>> ruleProvider, ResourceWrapper resource,
                           Context context, DefaultNode node, int count, boolean prioritized) throws BlockException {
         if (ruleProvider == null || resource == null) {
             return;
         }
+        // 获取流控规则
         Collection<FlowRule> rules = ruleProvider.apply(resource.getName());
         if (rules != null) {
             for (FlowRule rule : rules) {
+                // 分别进行各个维度的流控检查
                 if (!canPassCheck(rule, context, node, count, prioritized)) {
+                    // 检查出错，说明流控被限制，抛出异常，外层catch，则抛出block异常，进行请求拦截
                     throw new FlowException(rule.getLimitApp(), rule);
                 }
             }
@@ -61,6 +74,15 @@ public class FlowRuleChecker {
         return canPassCheck(rule, context, node, acquireCount, false);
     }
 
+    /**
+     * 进行请求通过性检查 流控
+     * @param rule
+     * @param context
+     * @param node
+     * @param acquireCount
+     * @param prioritized
+     * @return
+     */
     public boolean canPassCheck(/*@NonNull*/ FlowRule rule, Context context, DefaultNode node, int acquireCount,
                                                     boolean prioritized) {
         String limitApp = rule.getLimitApp();
@@ -68,10 +90,12 @@ public class FlowRuleChecker {
             return true;
         }
 
+        // 若是集群限流
         if (rule.isClusterMode()) {
             return passClusterCheck(rule, context, node, acquireCount, prioritized);
         }
 
+        // 单机限流
         return passLocalCheck(rule, context, node, acquireCount, prioritized);
     }
 
@@ -144,6 +168,15 @@ public class FlowRuleChecker {
         return null;
     }
 
+    /**
+     *  集群限流 会向dashbord询问本实例本次请求是否被限流
+     * @param rule
+     * @param context
+     * @param node
+     * @param acquireCount
+     * @param prioritized
+     * @return
+     */
     private static boolean passClusterCheck(FlowRule rule, Context context, DefaultNode node, int acquireCount,
                                             boolean prioritized) {
         try {

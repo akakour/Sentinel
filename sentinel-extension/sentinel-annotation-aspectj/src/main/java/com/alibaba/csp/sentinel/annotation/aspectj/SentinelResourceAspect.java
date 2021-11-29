@@ -35,10 +35,19 @@ import java.lang.reflect.Method;
 @Aspect
 public class SentinelResourceAspect extends AbstractSentinelAspectSupport {
 
+    /**
+     * 切点 ： @SentinelResource
+     */
     @Pointcut("@annotation(com.alibaba.csp.sentinel.annotation.SentinelResource)")
     public void sentinelResourceAnnotationPointcut() {
     }
 
+    /**
+     * 环绕 增强
+     * @param pjp
+     * @return
+     * @throws Throwable
+     */
     @Around("sentinelResourceAnnotationPointcut()")
     public Object invokeResourceWithSentinel(ProceedingJoinPoint pjp) throws Throwable {
         Method originMethod = resolveMethod(pjp);
@@ -48,12 +57,18 @@ public class SentinelResourceAspect extends AbstractSentinelAspectSupport {
             // Should not go through here.
             throw new IllegalStateException("Wrong state for SentinelResource annotation");
         }
+        // 获取流控资源名，如果注解没有设置，则是方法名
         String resourceName = getResourceName(annotation.value(), originMethod);
+        // 获取 操作类型 IN OUT（默认）
         EntryType entryType = annotation.entryType();
         int resourceType = annotation.resourceType();
         Entry entry = null;
         try {
+            /**
+             * 重点，按照sentinel的设计，SphU.entry()获取资源的操作对象，运行中如果可以通过，则表示不限流
+             */
             entry = SphU.entry(resourceName, resourceType, entryType, pjp.getArgs());
+            // 环绕增强中，这一步是调用原始方法
             Object result = pjp.proceed();
             return result;
         } catch (BlockException ex) {
@@ -73,6 +88,7 @@ public class SentinelResourceAspect extends AbstractSentinelAspectSupport {
             throw ex;
         } finally {
             if (entry != null) {
+                // 退出资源控制操作
                 entry.exit(1, pjp.getArgs());
             }
         }

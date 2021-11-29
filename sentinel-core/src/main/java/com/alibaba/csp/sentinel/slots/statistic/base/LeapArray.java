@@ -28,9 +28,10 @@ import com.alibaba.csp.sentinel.util.TimeUtil;
  * Basic data structure for statistic metrics in Sentinel.
  * </p>
  * <p>
- * Leap array use sliding window algorithm to count data. Each bucket cover {@code windowLengthInMs} time span,
- * and the total time span is {@link #intervalInMs}, so the total bucket amount is:
- * {@code sampleCount = intervalInMs / windowLengthInMs}.
+ *
+ * Leap 数组使用滑动窗口算法来统计数据。每个bucket覆盖{@code windowLengthInMs}时间跨度，
+ * 总时间跨度为{@link #intervalInMs}，所以总bucket数量为：
+ * {@code sampleCount = intervalInMs / windowLengthInMs}。
  * </p>
  *
  * @param <T> type of statistic data
@@ -38,13 +39,27 @@ import com.alibaba.csp.sentinel.util.TimeUtil;
  * @author Eric Zhao
  * @author Carpenter Lee
  */
+/**
+ * 一个滑动时间窗对象
+ * @param <T>
+ */
 public abstract class LeapArray<T> {
 
+    // 样本窗口长度 ms
     protected int windowLengthInMs;
+    // 样本窗口数量 默认2
     protected int sampleCount;
+    // 时间窗口长度 默认1000ms
     protected int intervalInMs;
+    // 时间窗口长度 1s
     private double intervalInSecond;
 
+    /**
+     *一个滑动时间窗中的样本窗口数组 默认是2个
+     * 1. 样本窗口 WindowWrap
+     * 2. 样本窗口存储的数据类型 泛型T实际上是 MetricBucket
+     *
+     */
     protected final AtomicReferenceArray<WindowWrap<T>> array;
 
     /**
@@ -72,7 +87,7 @@ public abstract class LeapArray<T> {
     }
 
     /**
-     * Get the bucket at current timestamp.
+     * 获取当前时间戳的样本窗口。
      *
      * @return the bucket at current timestamp
      */
@@ -97,18 +112,30 @@ public abstract class LeapArray<T> {
      */
     protected abstract WindowWrap<T> resetWindowTo(WindowWrap<T> windowWrap, long startTime);
 
+    /**
+     *  计算所在的样本窗口在时间窗口中的索引
+     *  计算方法是： 当前时间对时间窗口长度相除取整，然后对样本数取余。
+     * @param timeMillis
+     * @return
+     */
     private int calculateTimeIdx(/*@Valid*/ long timeMillis) {
         long timeId = timeMillis / windowLengthInMs;
         // Calculate current index so we can map the timestamp to the leap array.
         return (int)(timeId % array.length());
     }
 
+    /**
+     * 计算所在样本窗口的开始时间
+     * 计算方法： 当前时间 - （当前时间对时间窗口取余）
+     * @param timeMillis
+     * @return
+     */
     protected long calculateWindowStart(/*@Valid*/ long timeMillis) {
         return timeMillis - timeMillis % windowLengthInMs;
     }
 
     /**
-     * Get bucket item at provided timestamp.
+     * 在提供的时间戳获取样本窗口。
      *
      * @param timeMillis a valid timestamp in milliseconds
      * @return current bucket item at provided timestamp if the time is valid; null if time is invalid
@@ -118,8 +145,14 @@ public abstract class LeapArray<T> {
             return null;
         }
 
+        /**
+         * 计算得出本时刻所在的样本窗口在时间窗口数组中的索引位置。默认可在索引是：0,1,2,3四个
+         */
         int idx = calculateTimeIdx(timeMillis);
         // Calculate current bucket start time.
+        /**
+         * 计算所在样本窗口的开始时间
+         */
         long windowStart = calculateWindowStart(timeMillis);
 
         /*
@@ -131,6 +164,9 @@ public abstract class LeapArray<T> {
          */
         while (true) {
             WindowWrap<T> old = array.get(idx);
+            /**
+             * 1. 如果是null，说明该样本窗口还没有初始化
+             */
             if (old == null) {
                 /*
                  *     B0       B1      B2    NULL      B4
@@ -145,13 +181,20 @@ public abstract class LeapArray<T> {
                  * succeed to update, while other threads yield its time slice.
                  */
                 WindowWrap<T> window = new WindowWrap<T>(windowLengthInMs, windowStart, newEmptyBucket(timeMillis));
+                /**
+                 * CAS 更新样本窗口，只有一个线程可以成功。
+                 */
                 if (array.compareAndSet(idx, null, window)) {
                     // Successfully updated, return the created bucket.
                     return window;
                 } else {
+                    // 如果CAS失败，说明线程并发，刚好有其他线程新建样本窗口成功，则本线程不作处理，再次循环会取得样本窗口
                     // Contention failed, the thread will yield its time slice to wait for bucket available.
                     Thread.yield();
                 }
+                /**
+                 * 2. 如果取得样本窗口的开始时间刚好是计算得到的开始时间，则说明，应该返回的样本窗口就是这个了
+                  */
             } else if (windowStart == old.windowStart()) {
                 /*
                  *     B0       B1      B2     B3      B4
@@ -165,6 +208,9 @@ public abstract class LeapArray<T> {
                  * that means the time is within the bucket, so directly return the bucket.
                  */
                 return old;
+                /**
+                 * 3. 如果取得的样本窗口开始时间小于计算得到的样本开始时间，则说明，取得的旧样本窗口在时间窗口中已经过时了，需要被新的替换。
+                 */
             } else if (windowStart > old.windowStart()) {
                 /*
                  *   (old)
@@ -183,17 +229,25 @@ public abstract class LeapArray<T> {
                  * The update lock is conditional (tiny scope) and will take effect only when
                  * bucket is deprecated, so in most cases it won't lead to performance loss.
                  */
+                /**
+                 * 如果拿到可重入独占锁成功，则说明加锁成功，可以更新
+                 */
                 if (updateLock.tryLock()) {
                     try {
                         // Successfully get the update lock, now we reset the bucket.
+                        // 一般来说，替换样本窗口不会新建实例，只是将原来实例的开始时间更新成新的，样本值全部重置
                         return resetWindowTo(old, windowStart);
                     } finally {
                         updateLock.unlock();
                     }
                 } else {
+                    // 抢锁失败则啥也不做，再入循环体即可
                     // Contention failed, the thread will yield its time slice to wait for bucket available.
                     Thread.yield();
                 }
+                /**
+                 * 4. 如果计算出来的开始时间小于取得样本的开始时间，说明系统时钟回拨，直接新建一个空样本实例
+                 */
             } else if (windowStart < old.windowStart()) {
                 // Should not go through here, as the provided time is already behind.
                 return new WindowWrap<T>(windowLengthInMs, windowStart, newEmptyBucket(timeMillis));

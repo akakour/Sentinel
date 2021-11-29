@@ -25,8 +25,13 @@ import java.util.concurrent.atomic.LongAdder;
  * @author jialiang.linjl
  * @author Eric Zhao
  */
+
+/**
+ * 一个样本窗口统计的数据存储类型
+ */
 public class MetricBucket {
 
+    // 多维度统计的数据。统计维度是MetricEvent对象的枚举类型
     private final LongAdder[] counters;
 
     private volatile long minRt;

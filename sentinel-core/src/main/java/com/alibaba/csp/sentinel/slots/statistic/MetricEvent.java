@@ -21,15 +21,24 @@ package com.alibaba.csp.sentinel.slots.statistic;
 public enum MetricEvent {
 
     /**
-     * Normal pass.
+     * Normal pass. 窗口内通过数
      */
     PASS,
     /**
-     * Normal block.
+     * Normal block. 窗口内block数
      */
     BLOCK,
+    /**
+     * 窗口内 请求异常数
+     */
     EXCEPTION,
+    /**
+     * 窗口内，请求成功数
+     */
     SUCCESS,
+    /**
+     * 窗口内最小RT
+     */
     RT,
 
     /**

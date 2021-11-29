@@ -62,9 +62,14 @@ public class ContextUtil {
         initDefaultContext();
     }
 
+    /**
+     * 初始化默认sentinel上下文
+     * 上下文名 ： sentinel_default_context
+     */
     private static void initDefaultContext() {
         String defaultContextName = Constants.CONTEXT_DEFAULT_NAME;
         EntranceNode node = new EntranceNode(new StringResourceWrapper(defaultContextName, EntryType.IN), null);
+        // 给聚簇节点添加资源操作node（EntranceNode）
         Constants.ROOT.addChild(node);
         contextNameNodeMap.put(defaultContextName, node);
     }
@@ -129,16 +134,24 @@ public class ContextUtil {
                 } else {
                     LOCK.lock();
                     try {
+                        /**
+                         * 典型的 DCL 双重检查锁。目的是为了避免并发创建
+                         */
                         node = contextNameNodeMap.get(name);
                         if (node == null) {
                             if (contextNameNodeMap.size() > Constants.MAX_CONTEXT_NAME_SIZE) {
                                 setNullContext();
                                 return NULL_CONTEXT;
                             } else {
+                                // 并发创建
                                 node = new EntranceNode(new StringResourceWrapper(name, EntryType.IN), null);
                                 // Add entrance node.
                                 Constants.ROOT.addChild(node);
 
+                                /**
+                                 * Copy On write
+                                 * 解决 迭代稳定性 问题
+                                 */
                                 Map<String, DefaultNode> newMap = new HashMap<>(contextNameNodeMap.size() + 1);
                                 newMap.putAll(contextNameNodeMap);
                                 newMap.put(name, node);
